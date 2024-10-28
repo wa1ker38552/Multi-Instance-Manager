@@ -2,12 +2,25 @@
   "caden": {
     "name": "caden",
     "vip": "",
-    "potato": false,
+    "potato": true,
     "fps": 60,
     "delay": 5,
     "retries": 5,
     "stacking": false,
     "x_offset": 400,
-    "y_offset": 300
+    "y_offset": 300,
+    "last_updated": 1730081695.4880314,
+    "accounts": [
+      {
+        "username": "asdf",
+        "vip": "asdf",
+        "cookie": "adsf"
+      },
+      {
+        "username": "31",
+        "vip": "33",
+        "cookie": "212"
+      }
+    ]
   }
 }

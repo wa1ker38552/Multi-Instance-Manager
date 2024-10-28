@@ -1,12 +1,13 @@
 import sys
 import os
 import json
+import time
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
 from PyQt5 import QtCore
+from helpers import relative_time
 from QSwitchControl import SwitchControl
-from qframelesswindow import FramelessWindow
 
 
 def setBackground(self, color):
@@ -22,7 +23,7 @@ class Text(QLabel):
     def __init__(self, text, size=14):
         super().__init__()
         self.setText(text)
-        self.setStyleSheet(f"font-size: {size}px")
+        self.setStyleSheet(f"font-size: {size}px;")
 
 class ConfigOption(QWidget):
     def __init__(self, name, description):
@@ -90,7 +91,6 @@ class AccountRow(QWidget):
 class CreateConfigPage(QScrollArea):
     def __init__(self, parent):
         super().__init__()
-        self.setWidgetResizable(True)
         self.container = QWidget()
         layout = QVBoxLayout(self.container)
         self.setLayout(QVBoxLayout())
@@ -240,6 +240,7 @@ class CreateConfigPage(QScrollArea):
         self.setLayout(layout)
     
     def create_config(self):
+        global config_list
         config_name = self.config_name.input_name.text().strip()
         config_vip = self.config_vip.input_vip.text().strip()
         config_potato = self.config_potato.sc.isChecked()
@@ -279,12 +280,15 @@ class CreateConfigPage(QScrollArea):
                 'retries': config_retries,
                 'stacking': config_stacking,
                 'x_offset': config_x_offset,
-                'y_offset': config_y_offset
+                'y_offset': config_y_offset,
+                'last_updated': time.time(),
+                'accounts': accounts
             }
             with open('multi_instance_client_data/config_list.json', 'w') as file:
                 file.write(json.dumps(config_list, indent=2))
 
             self.parent.change_page(0)
+            self.parent.home_page.configs.update_configs() # force update to home page
 
 class AccountList(QWidget):
     def __init__(self):
@@ -339,6 +343,63 @@ class CreateSettingsPage(QWidget):
         layout.addItem(spacer)
         self.setLayout(layout)
 
+class CreateConfigList(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.update_configs()
+
+    def update_configs(self):
+        while self.layout.count():
+            item = self.layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+        for config in config_list:
+            c = QPushButton()
+            c.setObjectName("config-parent")
+            l = QVBoxLayout(c)
+            l.setSpacing(0)
+            l.addWidget(Text(config_list[config]['name']))
+            l.addWidget(Text(relative_time(config_list[config]['last_updated']), 12))
+            c.setStyleSheet(string('''  
+                #config-parent {
+                    border: 1px solid #d4d4d4;
+                    border-radius: 5px;
+                    background: #f7f7f7
+                }
+                QPushButton:hover {
+                    background: #ebebeb;
+                }
+            '''))
+            c.setFixedHeight(55)
+            c.setCursor(QCursor(QtCore.Qt.PointingHandCursor))
+            self.layout.addWidget(c)
+        
+        if not config_list:
+            t = Text("<i>No configs yet!<i>", 14)
+            t.setStyleSheet(t.styleSheet()+'color: #707070;')
+            self.layout.addWidget(t)
+            
+
+class CreateHomePage(QScrollArea):
+    def __init__(self):
+        super().__init__()
+        self.container = QWidget()
+        self.layout = QVBoxLayout(self.container)
+        self.setLayout(QVBoxLayout())
+        self.setWidget(self.container)
+        self.setWidgetResizable(True)
+
+        self.layout.addWidget(QLabel("My Configs"))
+
+        self.configs = CreateConfigList()
+        self.layout.addWidget(self.configs)
+
+        spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+        self.layout.addItem(spacer)
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -347,6 +408,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Multi Instance Manager")
         self.setMinimumSize(800, 400)
         self.resize(800, 400)
+        # self.setWindowOpacity(0.9)
         self.setStyleSheet(open('style.css', 'r').read())
 
         self.central_widget = QWidget()
@@ -368,13 +430,14 @@ class MainWindow(QMainWindow):
         self.nav_buttons.addItem(spacer)
 
         self.stacked_widget = QStackedWidget()
-        self.stacked_widget.addWidget(QLabel("This is Page 1"))
+        self.home_page = CreateHomePage() # accessed by config page
+        self.stacked_widget.addWidget(self.home_page)
         self.stacked_widget.addWidget(CreateConfigPage(self))
         self.stacked_widget.addWidget(CreateSettingsPage())
 
         self.layout.addLayout(self.nav_buttons)
         self.layout.addWidget(self.stacked_widget)
-        self.change_page(1)
+        self.change_page(0)
 
     def change_page(self, index):
         self.stacked_widget.setCurrentIndex(index)
