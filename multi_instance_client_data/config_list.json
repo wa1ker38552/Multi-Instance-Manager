@@ -1,0 +1,13 @@
+{
+  "caden": {
+    "name": "caden",
+    "vip": "",
+    "potato": false,
+    "fps": 60,
+    "delay": 5,
+    "retries": 5,
+    "stacking": false,
+    "x_offset": 400,
+    "y_offset": 300
+  }
+}
