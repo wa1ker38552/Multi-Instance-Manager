@@ -1,0 +1,43 @@
+import requests
+import random
+import time
+
+endpoints = ['https://roblox.com/catalog']
+
+class Account:
+    def __init__(self, data, logger):
+        self.logger = logger
+        self.username = data['username']
+        self.vip = data['vip']
+        self.cookie = data['cookie']
+        self.session = requests.Session()
+        self.session.headers['Referer'] = 'https://www.roblox.com/'
+        self.session.headers['Content-Type'] = 'application/json'
+        self.session.cookies.set('.ROBLOSECURITY', data['cookie'])
+
+    def get_xcsrf_token(self):
+        self.session.headers['X-CSRF-TOKEN'] = self.session.post(random.choice(endpoints)).headers['x-csrf-token']
+
+    def get_auth_ticket(self):
+        self.auth_ticket = self.session.post('https://auth.roblox.com/v1/authentication-ticket').headers['rbx-authentication-ticket']
+    
+    def launch(self, vip, retries, offset):
+        pass
+
+class AccountManager:
+    def __init__(self, data):
+        self.name = data['name']
+        self.vip = data['vip']
+        self.potato = data['potato']
+        self.ui = data['ui']
+        self.fps = data['fps']
+        self.delay = data['delay']
+        self.retries = data['retries']
+        self.offset = (data['x_offset'], data['y_offset'])
+        self.target = (data['target_x', data['target_y']])
+        self.accounts = [Account(account) for account in data['accounts']]
+
+    def launch_all_accounts(self):
+        for account in self.accounts:
+            account.launch(self.vip, self.retries, self.offset)
+            time.sleep(self.delay)

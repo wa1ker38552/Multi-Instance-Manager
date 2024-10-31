@@ -1,29 +1,18 @@
-import sys
-import os
+from QSwitchControl import SwitchControl
+from PyQt5.QtWidgets import *
+from fonts import load_fonts
+from PyQt5.QtCore import *
+from PyQt5.QtGui import *
+from logger import Logger
+from PyQt5 import QtCore
+from objects import *
+from helpers import *
+import copy
 import json
 import time
-from PyQt5.QtWidgets import *
-from PyQt5.QtGui import *
-from PyQt5.QtCore import *
-from PyQt5 import QtCore
-from helpers import relative_time
-from QSwitchControl import SwitchControl
+import sys
+import os
 
-
-def setBackground(self, color):
-    self.setAutoFillBackground(True)
-    palette = self.palette()
-    palette.setColor(self.backgroundRole(), QColor(color))
-    self.setPalette(palette)
-
-def string(text):
-    return '\n'.join([l.strip() for l in text.split('\n')])
-
-class Text(QLabel):
-    def __init__(self, text, size=14):
-        super().__init__()
-        self.setText(text)
-        self.setStyleSheet(f"font-size: {size}px;")
 
 class ConfigOption(QWidget):
     def __init__(self, name, description):
@@ -40,14 +29,6 @@ class ConfigOption(QWidget):
 
     def execute(self, code):
         exec(code)
-
-class Button(QPushButton):
-    def __init__(self, text, width, styles):
-        super().__init__()
-        self.setText(text)
-        self.setFixedWidth(width)
-        self.setStyleSheet(styles)
-        self.setCursor(QCursor(QtCore.Qt.PointingHandCursor))
 
 class AccountRow(QWidget):
     def __init__(self):
@@ -87,6 +68,418 @@ class AccountRow(QWidget):
             'vip': self.columns[1].text().strip(),
             'cookie': self.columns[2].text().strip()
         }
+    
+
+class CreateConfigList(QWidget):
+    def __init__(self, parent):
+        super().__init__()
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.update_configs()
+        self.parent = parent
+
+    def update_configs(self):
+        while self.layout.count():
+            item = self.layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+        for config in config_list:
+            c = QPushButton()
+            c.setObjectName("config-parent")
+            hstack = QHBoxLayout(c)
+            hstack.setContentsMargins(0, 0, 0, 0)
+
+            icon = QPushButton('')
+            icon.setIcon(QIcon("assets/icon_forward.png"))
+
+            text_container = QWidget()
+            l = QVBoxLayout(text_container)
+            l.setSpacing(0)
+            l.addWidget(Text(config_list[config]['name']))
+            l.addWidget(Text(relative_time(config_list[config]['last_updated']), 12))
+            c.setStyleSheet(string('''  
+                #config-parent {
+                    border: 1px solid #d4d4d4;
+                    border-radius: 5px;
+                    background: #f7f7f7
+                }
+                
+                #config-parent:hover {
+                    background: #ebebeb;
+                }
+            '''))
+            c.setFixedHeight(55)
+            c.setCursor(QCursor(QtCore.Qt.PointingHandCursor))
+
+            hstack.addWidget(text_container)
+            hstack.addStretch()
+            hstack.addWidget(icon)
+            self.layout.addWidget(c)
+
+            c.clicked.connect(lambda: self.view_config_details(config_list[config]))
+        
+        if not config_list:
+            t = Text("<i>No configs yet!<i>", 14)
+            t.setStyleSheet(t.styleSheet()+'color: #707070;')
+            self.layout.addWidget(t)
+
+    def view_config_details(self, config_data):
+        self.parent.change_page(3)
+        self.parent.config_details.update_configs(config_data)
+
+class ConfigDetails(QScrollArea):
+    def __init__(self):
+        super().__init__()
+        self.container = QWidget()
+        self.layout = QVBoxLayout(self.container)
+        self.setLayout(QVBoxLayout())
+        self.setWidget(self.container)
+        self.setWidgetResizable(True)
+        self.layout.setSpacing(0)
+        self.update_configs(None)
+        self.update_configs(config_list['caden'])
+        self.run_config(config_list['caden'])
+
+    def update_configs(self, data):
+        while self.layout.count():
+            item = self.layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+        if data:
+            header = QWidget()
+            header_layout = QHBoxLayout(header)
+            header_layout.setContentsMargins(0, 0, 0, 0)
+            header_layout.addWidget(QLabel(f'''Config "{data['name']}"'''))
+            c1 = string('''
+            QPushButton {
+                background: #00A4CD;
+                border-radius: 5px;
+                color: white;   
+                text-align: center;
+                padding: 5px;
+            }      
+            QPushButton:hover {
+                background: #0083a3;
+            }
+            ''')
+            c2 = string('''
+                background: #dbdbdb;
+                border-radius: 5px;
+                color: white;   
+                text-align: center;
+                padding: 5px;       
+            ''')
+            self.run_button = Button("Run Config", 100, c2 if is_running else c1)
+            self.run_button.clicked.connect(lambda: self.run_config(data))
+            header_layout.addWidget(self.run_button)
+            self.layout.addWidget(header)
+            self.layout.addWidget(Text("View and run config here", 12))
+            self.layout.addWidget(Spacer(20))
+
+            self.layout.addWidget(QLabel("Config Settings"))
+            self.layout.addWidget(Text("Data is in JSON format, do not edit unless you know what you're doing, entries are NOT checked for validity", 12))
+            self.layout.addWidget(Spacer(10))
+            self.edit = QTextEdit()
+            self.edit.setStyleSheet(string('''
+                QTextEdit {
+                    font-size: 12px;
+                    border: 1px solid #d4d4d4;
+                }
+
+                QTextEdit:focus {
+                    border-color: #00A4CD;
+                }
+                               
+            '''))
+            self.edit.setPlainText(json.dumps(data, indent=4))
+            self.edit.setFont(fira_code)
+            self.layout.addWidget(self.edit)
+
+            button_row = QWidget()
+            button_row_layout = QHBoxLayout(button_row)
+            button_row_layout.setContentsMargins(0, 0, 0, 0)
+            button_row_layout.setSpacing(10)
+
+            save_button = Button("Save", 60, string('''
+            QPushButton {
+                background: #00A4CD;
+                border-radius: 5px;
+                color: white;   
+                text-align: center;
+                padding: 5px;
+            }    
+            QPushButton:hover {
+                background: #0083a3;
+            }           
+            '''))
+            save_button.clicked.connect(self.save_configs)
+
+            reset_button = Button("Reset", 80, string('''
+            QPushButton {
+                border: 1px solid #00A4CD;
+                border-radius: 5px;
+                color: #00A4CD;   
+                text-align: center;
+                padding: 5px;
+            }
+            QPushButton:hover {
+                border-color: #0083a3;
+                color: #0083a3;
+            } 
+            '''))
+            reset_button.clicked.connect(lambda: self.edit.setPlainText(json.dumps(data, indent=4)))
+
+            self.layout.addWidget(Spacer(10))
+            button_row_layout.addWidget(save_button)
+            button_row_layout.addWidget(reset_button)
+            for i in range(4): button_row_layout.addWidget(QLabel("")) # create manual spacer because the stupid spacer policy doesn't work
+
+            self.layout.addWidget(button_row)
+
+            spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+            self.layout.addItem(spacer)
+
+    def save_configs(self):
+        try:
+            data = json.loads(self.edit.toPlainText())
+        except json.decoder.JSONDecodeError as e:
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Critical)
+            msg.setText(f'Error: {e}')
+            msg.setWindowTitle("Invalid Input")
+            msg.exec_()
+            return 
+        config_list[data['name']] = data
+        with open('multi_instance_client_data/config_list.json', 'w') as file:
+            file.write(json.dumps(config_list, indent=2))
+       
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Success)
+        msg.setText("Saved successfully")
+        msg.setWindowTitle("Invalid Input")
+        msg.exec_()
+
+    def run_config(self, data):
+        global is_running
+        if is_running: return
+
+        is_running = True
+        self.run_button.setStyleSheet(string('''
+        QPushButton {
+            background: #dbdbdb;
+            border-radius: 5px;
+            color: white;   
+            text-align: center;
+            padding: 5px;
+        }
+        '''))
+        
+        self.sub_window = InstanceManager(data, self)
+        self.sub_window.show()
+
+class InstanceManager(QMainWindow):
+    def __init__(self, data, parent):
+        super().__init__()
+        self.data = data
+        self.setWindowIcon(QIcon("assets/icon.png"))
+        self.setWindowTitle(f'Instance Manager - {data["name"]}')    
+        self.setMinimumSize(600, 300)
+        self.resize(600, 300)
+        self.parent = parent
+
+        self.main = QWidget()
+        self.setCentralWidget(self.main)
+        self.layout = QVBoxLayout(self.main)
+
+        self.terminal_container = QScrollArea()
+        self.terminal_container.setWidgetResizable(True)
+        self.terminal_container.setFixedHeight(200)
+
+        self.terminal = QWidget()
+        self.terminal_container.setWidget(self.terminal)
+        self.setObjectName("terminal-container")
+        self.terminal_layout = QVBoxLayout(self.terminal)
+        self.terminal_container.setStyleSheet(string('''
+            QLabel {
+                font-size: 12px;
+                background: black;
+                color: white;
+            }
+
+            QWidget {
+                background: black;
+            }
+                                                     
+            QScrollArea {
+                border: none;
+            }
+
+            QScrollBar:vertical {
+                border: none;
+                background: transparent;
+                width: 5px;
+                margin: 26px 0 26px 0;
+            }
+
+            QScrollBar::handle:vertical {
+                background: rgb(72, 72, 72);
+                min-height: 26px;
+            }
+
+            QScrollBar::add-line:vertical {
+                background: transparent;
+                height: 26px;
+                subcontrol-position: bottom;
+                subcontrol-origin: margin;
+            }
+
+            QScrollBar::sub-line:vertical {
+                background: transparent;
+                height: 26px;
+                subcontrol-position: top left;
+                subcontrol-origin: margin;
+                position: absolute;
+            }
+
+            QScrollBar:up-arrow:vertical, QScrollBar::down-arrow:vertical {
+                width: 26px;
+                height: 26px;
+                background: transparent;
+                image: url('./glass.png');
+            }
+
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+                background: transparent;
+            }
+        '''))
+        self.terminal_layout.setSpacing(0)
+        self.layout.addWidget(self.terminal_container)
+        
+        spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+        self.layout.addItem(spacer)
+        self.run()
+
+    def closeEvent(self, event):
+        global is_running
+        is_running = False
+        self.parent.update_configs(self.data)
+        event.accept()
+
+    def run(self):
+        self.logger = Logger(self.terminal_layout)
+
+class AccountList(QWidget):
+    def __init__(self):
+        super().__init__()
+        
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setSpacing(10)
+        self.rows = []
+
+    def add(self, widget):
+        self.layout.addWidget(widget)
+        self.rows.append(widget)
+
+class CreateConfigList(QWidget):
+    def __init__(self, parent):
+        super().__init__()
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.update_configs()
+        self.parent = parent
+        self.is_running = False
+
+    def update_configs(self):
+        while self.layout.count():
+            item = self.layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+        for config in config_list:
+            c = QPushButton()
+            c.setObjectName("config-parent")
+            hstack = QHBoxLayout(c)
+            hstack.setContentsMargins(0, 0, 0, 0)
+
+            icon = QPushButton('')
+            icon.setIcon(QIcon("assets/icon_forward.png"))
+
+            text_container = QWidget()
+            l = QVBoxLayout(text_container)
+            l.setSpacing(0)
+            l.addWidget(Text(config_list[config]['name']))
+            l.addWidget(Text(relative_time(config_list[config]['last_updated']), 12))
+            c.setStyleSheet(string('''  
+                #config-parent {
+                    border: 1px solid #d4d4d4;
+                    border-radius: 5px;
+                    background: #f7f7f7
+                }
+                
+                #config-parent:hover {
+                    background: #ebebeb;
+                }
+            '''))
+            c.setFixedHeight(55)
+            c.setCursor(QCursor(QtCore.Qt.PointingHandCursor))
+
+            hstack.addWidget(text_container)
+            hstack.addStretch()
+            hstack.addWidget(icon)
+
+            cd = copy.copy(config_list[config])
+            self.layout.addWidget(c)
+            c.clicked.connect(lambda _, cd=cd: self.view_config_details(cd))
+        
+        if not config_list:
+            t = Text("<i>No configs yet!<i>", 14)
+            t.setStyleSheet(t.styleSheet()+'color: #707070;')
+            self.layout.addWidget(t)
+
+    def view_config_details(self, data):
+        self.parent.change_page(3)
+        self.parent.config_details.update_configs(data)
+
+
+class CreateHomePage(QScrollArea):
+    def __init__(self, parent):
+        super().__init__()
+        self.container = QWidget()
+        self.layout = QVBoxLayout(self.container)
+        self.setLayout(QVBoxLayout())
+        self.setWidget(self.container)
+        self.setWidgetResizable(True)
+
+        self.layout.addWidget(QLabel("My Configs"))
+
+        self.configs = CreateConfigList(parent)
+        self.layout.addWidget(self.configs)
+
+        spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+        self.layout.addItem(spacer)
+
+class CreateSettingsPage(QWidget):
+    def __init__(self):
+        super().__init__()
+        layout = QVBoxLayout()
+        layout.addWidget(QLabel("Settings"))
+
+        config_bloxstrap = ConfigOption('Bloxstrap', 'Set Bloxstrap directory')
+        config_bloxstrap.execute(string('''
+            self.layout.addWidget(FileButton())
+        ''').strip())
+
+        layout.addWidget(config_bloxstrap)
+
+        spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+        layout.addItem(spacer)
+        self.setLayout(layout)
 
 class CreateConfigPage(QScrollArea):
     def __init__(self, parent):
@@ -127,6 +520,12 @@ class CreateConfigPage(QScrollArea):
             self.sc = SwitchControl(bg_color="#d4d4d4", circle_color="#f7f7f7", active_color="#00A4CD", animation_duration=0)
             self.layout.addWidget(self.sc)
         '''))
+
+        self.config_ui = ConfigOption('Disable UI', 'Disable all UI on instances')
+        self.config_ui.execute(string('''
+            self.sc = SwitchControl(bg_color="#d4d4d4", circle_color="#f7f7f7", active_color="#00A4CD", animation_duration=0)
+            self.layout.addWidget(self.sc)
+        '''))
         
         self.config_fps = ConfigOption('Cap FPS', 'Cap the FPS on each instance, leave empty for 60')
         self.config_fps.execute(string('''
@@ -141,6 +540,7 @@ class CreateConfigPage(QScrollArea):
         layout.addWidget(self.config_name)
         layout.addWidget(self.config_vip)
         layout.addWidget(self.config_potato)
+        layout.addWidget(self.config_ui)
         layout.addWidget(self.config_fps)
 
         self.account_list = AccountList()
@@ -216,9 +616,30 @@ class CreateConfigPage(QScrollArea):
             self.layout.addWidget(self.sc)
         '''))
 
+        self.config_target = ConfigOption('Window Target', 'The coordinates at which the program clicks to prevent disconnection')
+        self.config_target.execute(string('''
+            self.input_x = QLineEdit(self)
+            self.input_x.setFixedWidth(35)
+            self.input_x.setText('200')
+            self.input_x.setValidator(QIntValidator(0, 500))
+            self.input_x.setStyleSheet('font-size: 12px')
+                                          
+            self.input_y = QLineEdit(self)
+            self.input_y.setFixedWidth(35)
+            self.input_y.setText('200')
+            self.input_y.setValidator(QIntValidator(0, 500))
+            self.input_y.setStyleSheet('font-size: 12px')
+                                          
+            self.layout.addWidget(Text('X: ', 12, width=10))
+            self.layout.addWidget(self.input_x)
+            self.layout.addWidget(Text('Y: ', 12, width=10))
+            self.layout.addWidget(self.input_y)
+        '''))
+
         layout.addWidget(self.config_stacking)
         layout.addWidget(self.config_x_offset)
         layout.addWidget(self.config_y_offset)
+        layout.addWidget(self.config_target)
 
         create_config_button = Button("Create", 80, string('''
         QPushButton {
@@ -245,11 +666,14 @@ class CreateConfigPage(QScrollArea):
         config_vip = self.config_vip.input_vip.text().strip()
         config_potato = self.config_potato.sc.isChecked()
         config_fps = int(self.config_fps.input_fps.text())
+        config_ui = self.config_ui.sc.isChecked()
         config_delay = int(self.config_delay.input_delay.text())
         config_retries = int(self.config_retries.input_retries.text())
         config_stacking = self.config_stacking.sc.isChecked()
         config_x_offset = int(self.config_x_offset.input_x_offset.text())
         config_y_offset = int(self.config_y_offset.input_y_offset.text())
+        config_target_x = int(self.config_target.input_x.text())
+        config_target_y = int(self.config_target.input_y.text())
 
         accounts = [row.get_row_data() for row in self.account_list.rows]
         accounts = [a for a in accounts if a['cookie']]
@@ -263,6 +687,7 @@ class CreateConfigPage(QScrollArea):
         if int(config_x_offset > 1000): errors.append('Invalid x offset (<= 1000)')
         if int(config_y_offset > 800): errors.append('Invalid y offset (<= 800)')
         if config_name in config_list: errors.append('Config already exists')
+        if config_target_x > 500 or config_target_y > 500: errors.append('Invalid target range (0-500)')
     
         if errors:
             msg = QMessageBox()
@@ -275,12 +700,15 @@ class CreateConfigPage(QScrollArea):
                 'name': config_name,
                 'vip': config_vip,
                 'potato': config_potato,
+                'ui': config_ui,
                 'fps': config_fps,
                 'delay': config_delay,
                 'retries': config_retries,
                 'stacking': config_stacking,
                 'x_offset': config_x_offset,
                 'y_offset': config_y_offset,
+                'target_x': config_target_x,
+                'target_y': config_target_y,
                 'last_updated': time.time(),
                 'accounts': accounts
             }
@@ -289,117 +717,6 @@ class CreateConfigPage(QScrollArea):
 
             self.parent.change_page(0)
             self.parent.home_page.configs.update_configs() # force update to home page
-
-class AccountList(QWidget):
-    def __init__(self):
-        super().__init__()
-        
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(0, 0, 0, 0)
-        self.layout.setSpacing(10)
-        self.rows = []
-
-    def add(self, widget):
-        self.layout.addWidget(widget)
-        self.rows.append(widget)
-        
-class FileButton(QPushButton):
-    def __init__(self):
-        super().__init__()
-        self.setText('Select Directory')
-        self.setFixedWidth(150)
-        self.setStyleSheet(string('''                        
-        QPushButton {
-            border: 1px solid #d4d4d4; 
-            border-radius: 5px; 
-            padding: 5px;
-        }
-        QPushButton:hover {
-            background: #ebebeb;
-        }'''))
-        self.setCursor(QCursor(QtCore.Qt.PointingHandCursor))
-        self.clicked.connect(self.open_file)
-
-    def open_file(self):
-        path = QFileDialog.getExistingDirectory(self, "Select a Folder")
-        if path:
-            self.setText(path[-30:])
-            self.setStyleSheet('border: 1px solid #d4d4d4; border-radius: 5px; padding: 5px; text-align: right;')
-
-class CreateSettingsPage(QWidget):
-    def __init__(self):
-        super().__init__()
-        layout = QVBoxLayout()
-        layout.addWidget(QLabel("Settings"))
-
-        config_bloxstrap = ConfigOption('Bloxstrap', 'Set Bloxstrap directory')
-        config_bloxstrap.execute(string('''
-            self.layout.addWidget(FileButton())
-        ''').strip())
-
-        layout.addWidget(config_bloxstrap)
-
-        spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
-        layout.addItem(spacer)
-        self.setLayout(layout)
-
-class CreateConfigList(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(0, 0, 0, 0)
-        self.update_configs()
-
-    def update_configs(self):
-        while self.layout.count():
-            item = self.layout.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
-
-        for config in config_list:
-            c = QPushButton()
-            c.setObjectName("config-parent")
-            l = QVBoxLayout(c)
-            l.setSpacing(0)
-            l.addWidget(Text(config_list[config]['name']))
-            l.addWidget(Text(relative_time(config_list[config]['last_updated']), 12))
-            c.setStyleSheet(string('''  
-                #config-parent {
-                    border: 1px solid #d4d4d4;
-                    border-radius: 5px;
-                    background: #f7f7f7
-                }
-                QPushButton:hover {
-                    background: #ebebeb;
-                }
-            '''))
-            c.setFixedHeight(55)
-            c.setCursor(QCursor(QtCore.Qt.PointingHandCursor))
-            self.layout.addWidget(c)
-        
-        if not config_list:
-            t = Text("<i>No configs yet!<i>", 14)
-            t.setStyleSheet(t.styleSheet()+'color: #707070;')
-            self.layout.addWidget(t)
-            
-
-class CreateHomePage(QScrollArea):
-    def __init__(self):
-        super().__init__()
-        self.container = QWidget()
-        self.layout = QVBoxLayout(self.container)
-        self.setLayout(QVBoxLayout())
-        self.setWidget(self.container)
-        self.setWidgetResizable(True)
-
-        self.layout.addWidget(QLabel("My Configs"))
-
-        self.configs = CreateConfigList()
-        self.layout.addWidget(self.configs)
-
-        spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
-        self.layout.addItem(spacer)
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -430,30 +747,37 @@ class MainWindow(QMainWindow):
         self.nav_buttons.addItem(spacer)
 
         self.stacked_widget = QStackedWidget()
-        self.home_page = CreateHomePage() # accessed by config page
+        self.home_page = CreateHomePage(self) # accessed by config page
         self.stacked_widget.addWidget(self.home_page)
         self.stacked_widget.addWidget(CreateConfigPage(self))
         self.stacked_widget.addWidget(CreateSettingsPage())
 
+        # pages for config details 3+
+        self.config_details = ConfigDetails()
+        self.stacked_widget.addWidget(self.config_details)
+
         self.layout.addLayout(self.nav_buttons)
         self.layout.addWidget(self.stacked_widget)
-        self.change_page(0)
+        
+        self.change_page(3) #preview temporary
 
     def change_page(self, index):
         self.stacked_widget.setCurrentIndex(index)
         for i, button in enumerate(self.buttons):
             if i == index:
-                button.setStyleSheet('border-color: #00A4CD; background: #d4d4d4')
+                button.setStyleSheet('border-color: #00A4CD;')
             else:
                 button.setStyleSheet('')
+        if index >= 3:
+            self.buttons[0].setStyleSheet('border-color: #00A4CD;')
 
 
+is_running = False
 space = '‏‏‎ ‎‏‏‎ ‎‏‏‎ ‎'
 app = QApplication(sys.argv)
-fid = QFontDatabase.addApplicationFont('OpenSans-VariableFont_wdth,wght.ttf')
-font = QFont(QFontDatabase.applicationFontFamilies(fid)[0])
-QApplication.setFont(font)
+font, fira_code = load_fonts()
 
+# load client data
 os.makedirs('multi_instance_client_data', exist_ok=True)
 if not os.path.exists('multi_instance_client_data/config_list.json'):
     with open('multi_instance_client_data/config_list.json', 'w') as file:
@@ -462,6 +786,7 @@ if not os.path.exists('multi_instance_client_data/config_list.json'):
 with open('multi_instance_client_data/config_list.json', 'r') as file:
     config_list = json.loads(file.read())
 
+# initialize app
 window = MainWindow()
 window.show()
 sys.exit(app.exec_())

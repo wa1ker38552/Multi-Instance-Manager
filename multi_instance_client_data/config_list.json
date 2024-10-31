@@ -8,7 +8,7 @@
     "retries": 5,
     "stacking": false,
     "x_offset": 400,
-    "y_offset": 300,
+    "y_offsebt": 300,
     "last_updated": 1730081695.4880314,
     "accounts": [
       {
@@ -20,6 +20,27 @@
         "username": "31",
         "vip": "33",
         "cookie": "212"
+      }
+    ]
+  },
+  "asdf": {
+    "name": "asdf",
+    "vip": "asfd",
+    "potato": false,
+    "fps": 60,
+    "delay": 5,
+    "retries": 5,
+    "stacking": false,
+    "x_offset": 400,
+    "y_offset": 300,
+    "target_x": 250,
+    "target_y": 250,
+    "last_updated": 1730224874.7165468,
+    "accounts": [
+      {
+        "username": "d",
+        "vip": "d",
+        "cookie": "d"
       }
     ]
   }
