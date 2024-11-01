@@ -53,11 +53,12 @@ class FileButton(QPushButton):
         }'''))
         self.setCursor(QCursor(QtCore.Qt.PointingHandCursor))
         self.clicked.connect(self.open_file)
+        self.path = None
 
     def open_file(self):
-        path = QFileDialog.getExistingDirectory(self, "Select a Folder")
-        if path:
-            self.setText(path[-30:])
+        self.path = QFileDialog.getExistingDirectory(self, "Select a Folder")
+        if self.path:
+            self.setText(self.path[-30:])
             self.setStyleSheet('border: 1px solid #d4d4d4; border-radius: 5px; padding: 5px; text-align: right;')
 
 class TerminalLine(QLabel):

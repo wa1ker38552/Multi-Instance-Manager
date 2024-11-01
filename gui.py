@@ -1,5 +1,7 @@
+from account_manager import AccountManager
 from QSwitchControl import SwitchControl
 from PyQt5.QtWidgets import *
+from threading import Thread
 from fonts import load_fonts
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
@@ -12,7 +14,6 @@ import json
 import time
 import sys
 import os
-
 
 class ConfigOption(QWidget):
     def __init__(self, name, description):
@@ -63,11 +64,18 @@ class AccountRow(QWidget):
         self.ch.addWidget(delete_button, 0, 3)
 
     def get_row_data(self):
-        return {
-            'username': self.columns[0].text().strip(),
-            'vip': self.columns[1].text().strip(),
-            'cookie': self.columns[2].text().strip()
-        }
+        try:
+            return {
+                'username': self.columns[0].text().strip(),
+                'vip': self.columns[1].text().strip(),
+                'cookie': self.columns[2].text().strip()
+            }
+        except RuntimeError: 
+            return {
+                'username': None,
+                'vip': None,
+                'cookie': None
+            }
     
 
 class CreateConfigList(QWidget):
@@ -130,7 +138,7 @@ class CreateConfigList(QWidget):
         self.parent.config_details.update_configs(config_data)
 
 class ConfigDetails(QScrollArea):
-    def __init__(self):
+    def __init__(self, parent):
         super().__init__()
         self.container = QWidget()
         self.layout = QVBoxLayout(self.container)
@@ -139,8 +147,10 @@ class ConfigDetails(QScrollArea):
         self.setWidgetResizable(True)
         self.layout.setSpacing(0)
         self.update_configs(None)
-        self.update_configs(config_list['caden'])
-        self.run_config(config_list['caden'])
+        self.parent = parent
+
+        self.update_configs(config_list['Test 1'])
+        # self.run_config(config_list['caden'])
 
     def update_configs(self, data):
         while self.layout.count():
@@ -175,7 +185,24 @@ class ConfigDetails(QScrollArea):
             ''')
             self.run_button = Button("Run Config", 100, c2 if is_running else c1)
             self.run_button.clicked.connect(lambda: self.run_config(data))
+            
+            self.delete_button = Button("Delete Config", 120, string('''
+                QPushButton {
+                    border: 1px solid #00A4CD;
+                    border-radius: 5px;
+                    color: #00A4CD;   
+                    text-align: center;
+                    padding: 5px;
+                }
+                QPushButton:hover {
+                    border-color: #0083a3;
+                    color: #0083a3;
+                } '''))
+            self.delete_button.clicked.connect(lambda: self.delete_config(data))
+
             header_layout.addWidget(self.run_button)
+            header_layout.addWidget(self.delete_button)
+
             self.layout.addWidget(header)
             self.layout.addWidget(Text("View and run config here", 12))
             self.layout.addWidget(Spacer(20))
@@ -197,6 +224,7 @@ class ConfigDetails(QScrollArea):
             '''))
             self.edit.setPlainText(json.dumps(data, indent=4))
             self.edit.setFont(fira_code)
+            self.edit.setLineWrapMode(QTextEdit.NoWrap)
             self.layout.addWidget(self.edit)
 
             button_row = QWidget()
@@ -258,10 +286,26 @@ class ConfigDetails(QScrollArea):
             file.write(json.dumps(config_list, indent=2))
        
         msg = QMessageBox()
-        msg.setIcon(QMessageBox.Success)
+        msg.setIcon(QMessageBox.Information)
         msg.setText("Saved successfully")
         msg.setWindowTitle("Invalid Input")
         msg.exec_()
+
+    def delete_confirmation(self):
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Question)
+        msg_box.setWindowTitle("Confirm Deletion")
+        msg_box.setText("Are you sure?")
+        msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        return msg_box.exec_() == QMessageBox.Yes
+
+    def delete_config(self, data):
+        if self.delete_confirmation():
+            del config_list[data['name']]
+            with open('multi_instance_client_data/config_list.json', 'w') as file:
+                file.write(json.dumps(config_list, indent=2))
+            self.parent.home_page.configs.update_configs()
+            self.parent.change_page(0)
 
     def run_config(self, data):
         global is_running
@@ -280,6 +324,7 @@ class ConfigDetails(QScrollArea):
         
         self.sub_window = InstanceManager(data, self)
         self.sub_window.show()
+        self.sub_window.run() # test run
 
 class InstanceManager(QMainWindow):
     def __init__(self, data, parent):
@@ -357,11 +402,11 @@ class InstanceManager(QMainWindow):
             }
         '''))
         self.terminal_layout.setSpacing(0)
+        self.terminal_layout.setAlignment(Qt.AlignTop)
         self.layout.addWidget(self.terminal_container)
         
         spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
         self.layout.addItem(spacer)
-        self.run()
 
     def closeEvent(self, event):
         global is_running
@@ -370,7 +415,20 @@ class InstanceManager(QMainWindow):
         event.accept()
 
     def run(self):
-        self.logger = Logger(self.terminal_layout)
+        if 'bloxstrap_path' in settings:
+            launch_path = settings['bloxstrap_path']
+            self.logger = Logger(self.terminal_layout, fira_code)
+            self.logger.thread = AccountManager(self.data, self.logger, launch_path)
+            self.logger.thread.message_signal.connect(self.logger.push_message)
+            self.logger.thread.start()
+
+        else:
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Critical)
+            msg.setText("Bloxstrap directory not set!")
+            msg.setWindowTitle("Error")
+            msg.exec_()
+            self.logger.push_message(f'Bloxstrap directory not set', error=True)
 
 class AccountList(QWidget):
     def __init__(self):
@@ -470,16 +528,59 @@ class CreateSettingsPage(QWidget):
         layout = QVBoxLayout()
         layout.addWidget(QLabel("Settings"))
 
-        config_bloxstrap = ConfigOption('Bloxstrap', 'Set Bloxstrap directory')
-        config_bloxstrap.execute(string('''
-            self.layout.addWidget(FileButton())
+        self.config_bloxstrap = ConfigOption('Bloxstrap', 'Set Bloxstrap directory')
+        self.config_bloxstrap.execute(string('''
+            self.fb = FileButton()
+            self.layout.addWidget(self.fb)
         ''').strip())
 
-        layout.addWidget(config_bloxstrap)
+        layout.addWidget(self.config_bloxstrap)
+
+        save_button = Button("Save", 80, string('''
+        QPushButton {
+            background: #00A4CD;
+            border-radius: 5px;
+            color: white;   
+            text-align: center;
+            padding: 5px;
+        }    
+        QPushButton:hover {
+            background: #0083a3;
+        }                                   
+        '''))
+        save_button.clicked.connect(self.save_settings)
+        layout.addWidget(save_button)
 
         spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
         layout.addItem(spacer)
         self.setLayout(layout)
+
+    def save_settings(self):
+        dir_path = self.config_bloxstrap.fb.path
+        if dir_path:
+            if os.path.exists(dir_path):
+                # app good
+                settings['bloxstrap_path'] = dir_path
+                with open('multi_instance_client_data/settings.json', 'w') as file:
+                    file.write(json.dumps(settings, indent=2))
+
+                msg = QMessageBox()
+                msg.setIcon(QMessageBox.Information)
+                msg.setText("Saved Successfully")
+                msg.setWindowTitle("Success")
+                msg.exec_()
+            else:
+                msg = QMessageBox()
+                msg.setIcon(QMessageBox.Critical)
+                msg.setText("Invalid directory")
+                msg.setWindowTitle("Invalid")
+                msg.exec_()
+        else:
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Critical)
+            msg.setText("Invalid directory")
+            msg.setWindowTitle("Invalid")
+            msg.exec_()
 
 class CreateConfigPage(QScrollArea):
     def __init__(self, parent):
@@ -505,6 +606,15 @@ class CreateConfigPage(QScrollArea):
             self.input_name.setFixedWidth(200)
             self.input_name.setStyleSheet('font-size: 12px')
             self.layout.addWidget(self.input_name)
+        '''))
+
+        self.config_place = ConfigOption('Place ID', 'The ID of the Roblox game')
+        self.config_place.execute(string('''
+            self.input_place = QLineEdit(self)
+            self.input_place.setFixedWidth(200)
+            self.input_place.setStyleSheet('font-size: 12px')
+            self.input_place.setValidator(QIntValidator())
+            self.layout.addWidget(self.input_place)
         '''))
  
         self.config_vip = ConfigOption('VIP Server', 'All alts will join this server if set, otherwise random server')
@@ -538,6 +648,7 @@ class CreateConfigPage(QScrollArea):
         '''))
         
         layout.addWidget(self.config_name)
+        layout.addWidget(self.config_place)
         layout.addWidget(self.config_vip)
         layout.addWidget(self.config_potato)
         layout.addWidget(self.config_ui)
@@ -662,7 +773,14 @@ class CreateConfigPage(QScrollArea):
     
     def create_config(self):
         global config_list
+        errors = []
+
+
         config_name = self.config_name.input_name.text().strip()
+
+        try: config_place = int(self.config_place.input_place.text().strip())
+        except ValueError: config_place = None
+
         config_vip = self.config_vip.input_vip.text().strip()
         config_potato = self.config_potato.sc.isChecked()
         config_fps = int(self.config_fps.input_fps.text())
@@ -678,8 +796,8 @@ class CreateConfigPage(QScrollArea):
         accounts = [row.get_row_data() for row in self.account_list.rows]
         accounts = [a for a in accounts if a['cookie']]
 
-        errors = []
         if not config_name: errors.append('Invalid config name')
+        if not config_place: errors.append('Invalid place id')
         if len(accounts) == 0: errors.append('Must add at least 1 user')
         for a in accounts:
             if not a['cookie'] or not a['username']:
@@ -698,6 +816,7 @@ class CreateConfigPage(QScrollArea):
         else:
             config_list[config_name] = {
                 'name': config_name,
+                'place_id': config_place,
                 'vip': config_vip,
                 'potato': config_potato,
                 'ui': config_ui,
@@ -753,7 +872,7 @@ class MainWindow(QMainWindow):
         self.stacked_widget.addWidget(CreateSettingsPage())
 
         # pages for config details 3+
-        self.config_details = ConfigDetails()
+        self.config_details = ConfigDetails(self)
         self.stacked_widget.addWidget(self.config_details)
 
         self.layout.addLayout(self.nav_buttons)
@@ -782,9 +901,14 @@ os.makedirs('multi_instance_client_data', exist_ok=True)
 if not os.path.exists('multi_instance_client_data/config_list.json'):
     with open('multi_instance_client_data/config_list.json', 'w') as file:
         file.write(json.dumps({}))
+if not os.path.exists('multi_instance_client_data/settings.json'):
+    with open('multi_instance_client_data/settings.json', 'w') as file:
+        file.write(json.dumps({}))
 
 with open('multi_instance_client_data/config_list.json', 'r') as file:
     config_list = json.loads(file.read())
+with open('multi_instance_client_data/settings.json', 'r') as file:
+    settings = json.loads(file.read())
 
 # initialize app
 window = MainWindow()

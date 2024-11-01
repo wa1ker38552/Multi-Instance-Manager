@@ -31,7 +31,7 @@ QScrollArea {
 QScrollBar:horizontal {
     border: none;
     background: none;
-    height: 26px;
+    height: 5px;
     margin: 0px 26px 0 26px;
 }
 
@@ -58,7 +58,7 @@ QScrollBar::sub-line:horizontal {
 
 QScrollBar:left-arrow:horizontal, QScrollBar::right-arrow:horizontal {
     width: 26px;
-    height: 26px;
+    height: 5px;
     background: none;
     image: url('./glass.png');
 }
