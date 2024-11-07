@@ -404,6 +404,22 @@ class InstanceManager(QMainWindow):
         self.terminal_layout.setSpacing(0)
         self.terminal_layout.setAlignment(Qt.AlignTop)
         self.layout.addWidget(self.terminal_container)
+
+        stop_button = Button("Stop Instances", 150, string('''
+            QPushButton {
+                background: #00A4CD;
+                border-radius: 5px;
+                color: white;   
+                text-align: center;
+                padding: 5px;
+                font-size: 13px;
+            }    
+            QPushButton:hover {
+                background: #0083a3;
+            }                      
+        '''))
+        stop_button.clicked.connect(self.stop)
+        self.layout.addWidget(stop_button)
         
         spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
         self.layout.addItem(spacer)
@@ -418,7 +434,8 @@ class InstanceManager(QMainWindow):
         if 'bloxstrap_path' in settings:
             launch_path = settings['bloxstrap_path']
             self.logger = Logger(self.terminal_layout, fira_code)
-            self.logger.thread = AccountManager(self.data, self.logger, launch_path)
+            self.account_manager = AccountManager(self.data, self.logger, launch_path, screen_x, screen_y)
+            self.logger.thread = self.account_manager
             self.logger.thread.message_signal.connect(self.logger.push_message)
             self.logger.thread.start()
 
@@ -429,6 +446,9 @@ class InstanceManager(QMainWindow):
             msg.setWindowTitle("Error")
             msg.exec_()
             self.logger.push_message(f'Bloxstrap directory not set', error=True)
+    
+    def stop(self):
+        self.account_manager.kill_all_accounts()
 
 class AccountList(QWidget):
     def __init__(self):
@@ -687,18 +707,18 @@ class CreateConfigPage(QScrollArea):
             self.layout.addWidget(self.input_delay)
         '''))
 
-        self.config_retries = ConfigOption('Launch Retries', 'How many times it tries to re-launch an instance, leave empty for 5')
-        self.config_retries.execute(string('''
-            self.input_retries = QLineEdit(self)
-            self.input_retries.setFixedWidth(50)
-            self.input_retries.setText('5')
-            self.input_retries.setValidator(QIntValidator(0, 9999))
-            self.input_retries.setStyleSheet('font-size: 12px')
-            self.layout.addWidget(self.input_retries)
+        self.config_relaunch_delay = ConfigOption('Relaunch Delay', 'The time to wait after an instance fails to launch, leave empty for 10s')
+        self.config_relaunch_delay.execute(string('''
+            self.input_relaunch_delay = QLineEdit(self)
+            self.input_relaunch_delay.setFixedWidth(50)
+            self.input_relaunch_delay.setText('10')
+            self.input_relaunch_delay.setValidator(QIntValidator(0, 9999))
+            self.input_relaunch_delay.setStyleSheet('font-size: 12px')
+            self.layout.addWidget(self.input_relaunch_delay)
         '''))
 
         layout.addWidget(self.config_delay)
-        layout.addWidget(self.config_retries)
+        layout.addWidget(self.config_relaunch_delay)
 
         layout.addWidget(QLabel("Window Settings"))
         self.config_x_offset = ConfigOption('Window X Offset', 'The x offset of each window, leave empty for 400px')
@@ -786,7 +806,7 @@ class CreateConfigPage(QScrollArea):
         config_fps = int(self.config_fps.input_fps.text())
         config_ui = self.config_ui.sc.isChecked()
         config_delay = int(self.config_delay.input_delay.text())
-        config_retries = int(self.config_retries.input_retries.text())
+        config_relaunch_delay = int(self.config_relaunch_delay.input_relaunch_delay.text())
         config_stacking = self.config_stacking.sc.isChecked()
         config_x_offset = int(self.config_x_offset.input_x_offset.text())
         config_y_offset = int(self.config_y_offset.input_y_offset.text())
@@ -822,7 +842,7 @@ class CreateConfigPage(QScrollArea):
                 'ui': config_ui,
                 'fps': config_fps,
                 'delay': config_delay,
-                'retries': config_retries,
+                'relaunch_delay': config_relaunch_delay,
                 'stacking': config_stacking,
                 'x_offset': config_x_offset,
                 'y_offset': config_y_offset,
@@ -895,6 +915,8 @@ is_running = False
 space = '‏‏‎ ‎‏‏‎ ‎‏‏‎ ‎'
 app = QApplication(sys.argv)
 font, fira_code = load_fonts()
+screen_x = app.primaryScreen().size().width()
+screen_y = app.primaryScreen().size().height()
 
 # load client data
 os.makedirs('multi_instance_client_data', exist_ok=True)
