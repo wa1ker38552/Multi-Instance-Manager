@@ -405,21 +405,20 @@ class InstanceManager(QMainWindow):
         self.terminal_layout.setAlignment(Qt.AlignTop)
         self.layout.addWidget(self.terminal_container)
 
-        stop_button = Button("Stop Instances", 150, string('''
-            QPushButton {
-                background: #00A4CD;
-                border-radius: 5px;
-                color: white;   
-                text-align: center;
-                padding: 5px;
-                font-size: 13px;
-            }    
-            QPushButton:hover {
-                background: #0083a3;
-            }                      
-        '''))
+        stop_button = Button("Stop Instances", 150, primary_button_css)
         stop_button.clicked.connect(self.stop)
-        self.layout.addWidget(stop_button)
+
+        abort_button = Button("Abort", 80, primary_button_css)
+        abort_button.clicked.connect(self.abort)
+
+        button_row = QWidget()
+        button_row.setLayout(QHBoxLayout())
+        button_row.layout().setAlignment(Qt.AlignLeft)
+        button_row.layout().setContentsMargins(0, 0, 0, 0)
+        button_row.layout().addWidget(stop_button)
+        button_row.layout().addWidget(abort_button)
+
+        self.layout.addWidget(button_row)
         
         spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
         self.layout.addItem(spacer)
@@ -430,25 +429,43 @@ class InstanceManager(QMainWindow):
         self.parent.update_configs(self.data)
         event.accept()
 
+    def abort(self):
+        if hasattr(self, 'account_manager') and not self.account_manager.abort:
+            self.logger.push_message('Aborting launch...', 2)
+            self.account_manager.abort = True
+
     def run(self):
         if 'bloxstrap_path' in settings:
-            launch_path = settings['bloxstrap_path']
-            self.logger = Logger(self.terminal_layout, fira_code)
-            self.account_manager = AccountManager(self.data, self.logger, launch_path, screen_x, screen_y)
-            self.logger.thread = self.account_manager
-            self.logger.thread.message_signal.connect(self.logger.push_message)
-            self.logger.thread.start()
+            # stupid fucking shit so that it can update the terminal from another thread
+            self.thread = QThread()
+            self.worker = Worker()
+            self.worker.moveToThread(self.thread)
+            self.worker.update_signal.connect(self.add_terminal_widget)
+            self.thread.started.connect(self.worker.run)
+            self.thread.start()
+            self.logger = Logger(self.worker)
 
+            Thread(target=self.setup_account_manager).start()
         else:
             msg = QMessageBox()
             msg.setIcon(QMessageBox.Critical)
             msg.setText("Bloxstrap directory not set!")
             msg.setWindowTitle("Error")
             msg.exec_()
-            self.logger.push_message(f'Bloxstrap directory not set', error=True)
+            self.logger.push_message(f'Bloxstrap directory not set', 3)
     
+    def setup_account_manager(self):
+        launch_path = settings['bloxstrap_path']
+        self.account_manager = AccountManager(self.data, self.logger, launch_path, screen_x, screen_y)
+        self.account_manager.run()
+
     def stop(self):
         self.account_manager.kill_all_accounts()
+        time.sleep(1)
+        self.close()
+
+    def add_terminal_widget(self, message, status):
+        self.terminal_layout.addWidget(TerminalLine(message, fira_code, status))
 
 class AccountList(QWidget):
     def __init__(self):
@@ -789,7 +806,7 @@ class CreateConfigPage(QScrollArea):
 
         spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
         layout.addItem(spacer)
-        self.setLayout(layout)
+        # self.setLayout(layout)
     
     def create_config(self):
         global config_list

@@ -34,9 +34,9 @@ class Account:
                 self.session.headers['X-CSRF-TOKEN'] = self.session.post(random.choice(endpoints)).headers['x-csrf-token']
                 obtained_token = True
             except Exception as e:
-                self.logger.push_message(f'Failed to obtain x-csrf token for {self.username}, {e}, retrying in 5s...', error=True)
+                self.logger.push_message(f'Failed to obtain x-csrf token for {self.username}, {e}, retrying in 5s...', 3)
                 time.sleep(5)
-        self.logger.push_message(f'Obtained x-csrf-token-for {self.username}')
+        self.logger.push_message(f'Obtained x-csrf-token-for {self.username}', 0)
 
     def get_auth_ticket(self):
         obtained_ticket = False
@@ -45,9 +45,9 @@ class Account:
                 self.auth_ticket = self.session.post('https://auth.roblox.com/v1/authentication-ticket').headers['rbx-authentication-ticket']
                 obtained_ticket = True
             except Exception as e:
-                self.logger.push_message(f'Failed to obtain auth ticket for {self.username}, {e}, retrying in 5s...', error=True)
+                self.logger.push_message(f'Failed to obtain auth ticket for {self.username}, {e}, retrying in 5s...', 3)
                 time.sleep(5)
-        self.logger.push_message(f'Obtained auth ticket for {self.username}')
+        self.logger.push_message(f'Obtained auth ticket for {self.username}', 0)
 
     def launch_instance(self, vip, place_id):
         self.place_id = place_id
@@ -71,11 +71,11 @@ class Account:
             time.sleep(0.1)
             timeout_count += 0.1
             if timeout_count > 10:
-                self.logger.push_message(f'Launching {self.username} timed out. Retrying...', error=True)
+                self.logger.push_message(f'Launching {self.username} timed out. Retrying...', 3)
                 try:
                     Thread(target=self.launch).start()
                 except:
-                    self.logger.push_message(f'Failed to re-launch {self.username}. Retrying...', error=True)
+                    self.logger.push_message(f'Failed to re-launch {self.username}. Retrying...', 3)
                     time.sleep(AccountManager.relaunch_delay)
                 timeout_count = 0
 
@@ -100,20 +100,23 @@ class Account:
                     AccountManager.window_y += 25
                 AccountManager.window_ids.append(win.id)
                 self.launched = True
+                self.logger.push_message(f'Successfully launched {self.username}', 1)
 
     def launch(self):
-        self.logger.push_message(f'Launched {self.username}')
         process = subprocess.Popen([self.launcher_path, self.launch_url])
         self.pid = process.pid
         
     def kill(self):
         try:
             os.kill(self.pid, signal.SIGTERM)
+            return True
         except OSError:
-            self.logger.push_message(f'Failed to kill {self.pid}', error=True)
+            self.logger.push_message(f'Failed to kill {self.pid}', 3)
+        except AttributeError:
+            self.logger.push_message("PID doesn't exist", 3)
+        return False
 
-class AccountManager(QThread):
-    message_signal = pyqtSignal(str)
+class AccountManager:
     ahk = AHK(executable_path=r'C:\Program Files\AutoHotkey\AutoHotkey.exe')
     window_ids: list[int] = []
     window_x: int = 0
@@ -130,10 +133,11 @@ class AccountManager(QThread):
     
 
     def __init__(self, data, logger, launcher_path, scx, scy):
-        super().__init__()
+        self.logger = logger
+        self.abort = False # stop opening instances
 
         if not os.path.exists(f'{launcher_path}/Roblox/Player/RobloxPlayerBeta.exe'):
-            self.logger.push_message(f'Unable to locate RobloxPlayerBeta.exe', error=True)
+            self.logger.push_message(f'Unable to locate RobloxPlayerBeta.exe', 3)
         else:
             self.launcher_path = f'{launcher_path}/Roblox/Player/RobloxPlayerBeta.exe'
 
@@ -153,7 +157,7 @@ class AccountManager(QThread):
         AccountManager.screen = (scx, scy)
 
     def create_singleton_mutex(self):
-        self.message_signal.emit('Created Roblox_singletonMutex')
+        self.logger.push_message('Created Roblox_singletonMutex', 0)
         while self.running:
             mutex = ctypes.windll.kernel32.CreateMutexW(None, True, "ROBLOX_singletonMutex")
             time.sleep(1)
@@ -163,16 +167,24 @@ class AccountManager(QThread):
         self.launch_all_accounts()
 
     def launch_all_accounts(self):
-        for account in self.accounts: # TRMEP CHNGE
-            self.message_signal.emit(f'Launching {account.username}')
-            account.launch_instance(self.vip, self.place_id)
+        for account in self.accounts: # ignore
+            if not self.abort:
+                self.logger.push_message(f'Launching {account.username}', 0)
+                account.launch_instance(self.vip, self.place_id)
+            else:
+                break
             # time.sleep(self.delay)
 
+        while not all([account.launched for account in self.accounts]) and not self.abort:
+            time.sleep(0.1)
+        
+        self.logger.push_message(f'{len(self.window_ids)}/{len(self.accounts)} accounts loaded successfully', 1)
+
     def kill_all_accounts(self):
+        status = []
         for account in self.accounts:
-            account.kill()
+            status.append(account.kill())
         self.running = False
-        self.message_signal.emit('Killed all accounts successfully')
 
     @staticmethod
     def get_roblox_windows():

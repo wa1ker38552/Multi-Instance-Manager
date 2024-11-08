@@ -62,11 +62,34 @@ class FileButton(QPushButton):
             self.setStyleSheet('border: 1px solid #d4d4d4; border-radius: 5px; padding: 5px; text-align: right;')
 
 class TerminalLine(QLabel):
-    def __init__(self, text, fira_code, error=False):
+    colors: list[int] = ['white', 'green', 'yellow', 'red']
+
+    def __init__(self, text, fira_code, status=0):
         super().__init__()
         self.setText(text)
         self.setContentsMargins(0, 0, 0, 0)
         self.setFont(fira_code)
         
-        if (error):
-            self.setStyleSheet('color: red;')
+        self.setStyleSheet(f'color: {TerminalLine.colors[status]};')
+
+class Worker(QObject):
+    update_signal = pyqtSignal(str, int)
+
+    def run(self): pass
+
+    def emit(self, message, status):
+        self.update_signal.emit(message, status)
+
+primary_button_css = string('''
+    QPushButton {
+        background: #00A4CD;
+        border-radius: 5px;
+        color: white;   
+        text-align: center;
+        padding: 5px;
+        font-size: 13px;
+    }    
+    QPushButton:hover {
+        background: #0083a3;
+    }                      
+''')
